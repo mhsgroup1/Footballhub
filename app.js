@@ -5,7 +5,90 @@ const newsGrid=document.querySelector('#newsGrid');news.forEach(n=>newsGrid.inne
 const videoGrid=document.querySelector('#videoGrid');videos.forEach(v=>videoGrid.innerHTML+=`<article class="video"><div class="video-cover"><div class="play">${v[2]}</div><span class="duration">${v[1]}</span></div><div class="video-body"><h3>${v[0]}</h3></div></article>`);
 const matchesGrid=document.querySelector('#matchesGrid');matches.forEach(m=>matchesGrid.innerHTML+=`<div class="match"><div class="teams">${m[0]} <span>vs</span> ${m[1]}</div><div class="time">${m[2]} · Today</div></div>`);
 const modal=document.querySelector('#loginModal');document.querySelector('#loginBtn').onclick=()=>modal.classList.remove('hidden');document.querySelector('#closeModal').onclick=()=>modal.classList.add('hidden');document.querySelector('#searchBtn').onclick=()=>{const q=prompt('Search FootballHub');if(q)showToast('Search is ready — connect your content API to enable results.');};document.querySelector('#newsletterForm').onsubmit=e=>{e.preventDefault();showToast('Thanks! You are subscribed.');e.target.reset()};
-let supabaseClient=null;if(window.SUPABASE_URL&&window.SUPABASE_ANON_KEY&&window.supabase){supabaseClient=window.supabase.createClient(window.SUPABASE_URL,window.SUPABASE_ANON_KEY)}
-const authForm=document.querySelector('#authForm');authForm.onsubmit=async e=>{e.preventDefault();if(!supabaseClient){showToast('Add your Supabase URL and anon key in js/config.js first.');return}const email=document.querySelector('#email').value,password=document.querySelector('#password').value;const {error}=await supabaseClient.auth.signInWithPassword({email,password});document.querySelector('#authStatus').textContent=error?error.message:'Signed in successfully!';if(!error)setTimeout(()=>modal.classList.add('hidden'),800)};
-document.querySelector('#signupBtn').onclick=async()=>{if(!supabaseClient){showToast('Add your Supabase URL and anon key in js/config.js first.');return}const email=document.querySelector('#email').value,password=document.querySelector('#password').value;if(!email||!password){document.querySelector('#authStatus').textContent='Enter email and password first.';return}const {error}=await supabaseClient.auth.signUp({email,password});document.querySelector('#authStatus').textContent=error?error.message:'Account created. Check your email if confirmation is enabled.'};
+let supabaseClient=null;
+if(window.SUPABASE_URL&&window.SUPABASE_ANON_KEY&&window.supabase){
+  supabaseClient=window.supabase.createClient(window.SUPABASE_URL,window.SUPABASE_ANON_KEY);
+}
+
+const loginBtn=document.querySelector('#loginBtn');
+const authForm=document.querySelector('#authForm');
+const emailInput=document.querySelector('#email');
+const passwordInput=document.querySelector('#password');
+const authStatus=document.querySelector('#authStatus');
+const signupBtn=document.querySelector('#signupBtn');
+
+function setLoggedInUI(user){
+  if(user){
+    loginBtn.textContent='Account';
+    loginBtn.title=user.email || 'Signed in';
+    loginBtn.onclick=()=>showAccountModal(user);
+  }else{
+    loginBtn.textContent='Login';
+    loginBtn.title='Sign in';
+    loginBtn.onclick=()=>modal.classList.remove('hidden');
+  }
+}
+
+function showAccountModal(user){
+  modal.classList.remove('hidden');
+  document.querySelector('.modal-box').innerHTML=`
+    <button class="close" id="closeAccount">×</button>
+    <h2>Your account</h2>
+    <p>You are signed in as:</p>
+    <p style="font-weight:700;word-break:break-word">${escapeHtml(user.email || '')}</p>
+    <button class="primary" type="button" id="logoutBtn">Log out</button>
+    <p class="status" id="accountStatus"></p>`;
+  document.querySelector('#closeAccount').onclick=()=>modal.classList.add('hidden');
+  document.querySelector('#logoutBtn').onclick=async()=>{
+    const {error}=await supabaseClient.auth.signOut();
+    if(error){document.querySelector('#accountStatus').textContent=error.message;return;}
+    modal.classList.add('hidden');
+    showToast('You have been logged out.');
+  };
+}
+
+function escapeHtml(value){
+  return String(value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+
+loginBtn.onclick=()=>modal.classList.remove('hidden');
+document.querySelector('#closeModal').onclick=()=>modal.classList.add('hidden');
+
+authForm.onsubmit=async e=>{
+  e.preventDefault();
+  if(!supabaseClient){authStatus.textContent='Supabase is not configured.';return;}
+  const email=emailInput.value.trim(),password=passwordInput.value;
+  authStatus.textContent='Signing in…';
+  const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+  if(error){authStatus.textContent=error.message;return;}
+  authStatus.textContent=`Signed in as ${data.user?.email || email}`;
+  setLoggedInUI(data.user);
+  setTimeout(()=>modal.classList.add('hidden'),700);
+};
+
+signupBtn.onclick=async()=>{
+  if(!supabaseClient){authStatus.textContent='Supabase is not configured.';return;}
+  const email=emailInput.value.trim(),password=passwordInput.value;
+  if(!email||!password){authStatus.textContent='Enter email and password first.';return;}
+  authStatus.textContent='Creating account…';
+  const {data,error}=await supabaseClient.auth.signUp({email,password});
+  if(error){authStatus.textContent=error.message;return;}
+  if(data.session){
+    authStatus.textContent=`Account created and signed in as ${data.user?.email || email}`;
+    setLoggedInUI(data.user);
+  }else{
+    authStatus.textContent='Account created. Check your email and confirm your account, then sign in.';
+  }
+};
+
+async function initAuth(){
+  if(!supabaseClient){return;}
+  const {data}=await supabaseClient.auth.getSession();
+  setLoggedInUI(data.session?.user || null);
+  supabaseClient.auth.onAuthStateChange((_event,session)=>{
+    setLoggedInUI(session?.user || null);
+  });
+}
+initAuth();
+
 function showToast(t){const el=document.querySelector('#toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2800)}
